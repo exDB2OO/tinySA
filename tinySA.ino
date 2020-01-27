@@ -22,6 +22,52 @@
  *
  */
 
+//DB2OO, 18.1.20----------------------------------------------------------
+/*************************************************************************
+ * PIN Connections Arduino Nano:
+ * Encoder:
+ *  int R_pinEncA=D3;
+ *  int R_pinEncB=D2;
+ *  NANO: const int buttonPin = 8--> 11;    // the number of the pushbutton pin
+ *  NANO const int backButtonPin = 9 --> 12;
+ *  NANO: const int buttonPin = D0;    // the number of the pushbutton pin
+ *  NANO const int backButtonPin = SD3;
+ * Display:
+ *  NANO: A4, A5 for SDA, SCL for I2C
+ *  ESP8266: D1, D2 for I2C
+ * 
+ * SI4432:
+ * nSEL for TX=D5, RX=D7, ??=11, ??=12
+ *   const int SI_nSEL[2] = { 7,8, 11, 12 };
+ *   const int SI_SCLK = 6 ;
+ *   NANO: const int SI_SDI = 2 --> 9 ; --> WILL NEED A CHANGE
+ *   NANO: const int SI_SDO = 3 --> 10; --> will need a change
+ *   ESP8266: const int SI_SDI = SD1 ; --> WILL NEED A CHANGE
+ *   ESP8266: const int SI_SDO = SD2; --> will need a change
+ *   
+ * Attenuator:
+ * #ifdef PE4302_serial
+ *    Clock and data pints are shared with SI4432
+ *    Serial mode LE pin
+ *      #define PE4302_en 10
+ * #else
+ *    Parallel mode bit 0 pin number, according below line the PE4302 is connected to lines A0,A1,A2,A3,A4,A5
+ *    #define PE4302_pinbase A0
+ * #endif
+ * 
+ * LED, that blinks during data transfer
+ * #if defined(ARDUINO_ARCH_SAMD) 
+ *    #define tinySA_led 13
+ * #else
+ *    #define tinySA_led LED_BUILTIN
+ * #endif
+ *************************************************************************/
+
+// DB2OO 18.1.20
+#ifdef ESP8266
+
+#endif
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -31,217 +77,57 @@
 #endif
 
 // Comment out below line if you do not want a local user interface
-#define USE_ROTARY  1
-#define USE_DISPLAY 1
-// #define USE_SSD1306 1
-#define USE_ILI9341 1
+//#define USE_ROTARY  1
+//#define USE_DISPLAY 1
+//DB2OO, 18.1.20
+//#define USE_ATTENUATOR 1
+//#define GPIO2_OUTPUT  1
+//DB2OO, 18.1.20: If USE_SI4432 ist NOT defined, there will not be any communication to the SI4432 modules--> this is used to check the UI w/o SI4432 SPI communication
+#define USE_SI4432
+
+//DB2OO, 18.1.20 --> need to change pins
+#if !defined(ARDUINO_ARCH_SAMD) 
+  #if defined USE_ROTARY
+  #warning "USE_ROTARY for Nano"
+  #endif
+  #warning "Non #if defined(ARDUINO_ARCH_SAMD) "
+#endif
+
 // #define USE_SI4463  1
 
 #ifdef USE_SI4463
 #include "./Si446x.h" 
 #endif
 
-
-//------------------------------------------ Display ------------------------------------
-#ifdef USE_SSD1306
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-//#define SCREEN_WIDTH 128 // OLED display width, in pixels
-//#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 tft(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-#define DISPLAY_POINTS 100
-#endif
-
-
-
-#ifdef USE_ILI9341
-#include "SPI.h"
-#include "Adafruit_GFX.h"
-#include "Adafruit_ILI9341.h"
-
-// For the Adafruit shield, these are the default.
-#define TFT_DC A5
-#define TFT_CS A4
-
-// Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-
-#define DISPLAY_POINTS 300
-
-#endif
-
-//#define SCREEN_WIDTH 320 // OLED display width, in pixels
-//#define SCREEN_HEIGHT 240 // OLED display height, in pixels
-
 // The onboard led is blinked during serial transfer
+#if defined(ARDUINO_ARCH_SAMD) 
 #define tinySA_led 13
-
-#ifndef DISPLAY_POINTS
-#define DISPLAY_POINTS 100
+#else
+#define tinySA_led LED_BUILTIN
 #endif
 
-//--------------------- Generic display ---------------
+/************************
+ * DB2==: 18.1.20 moved to front: Debugging
+ */
+int debug = 1;
 
-void clearDisplay()
-{
-#ifdef USE_SSD1306  
-  tft.clearDisplay();
-#endif
-#ifdef USE_ILI9341
-  tft.fillScreen(ILI9341_BLACK);
-#endif
-}
+#define DebugLine(X) { if (debug) Serial.println(X); }
+#define Debug(X) { if (debug) Serial.print(X); }
 
-void textWhite()
-{
-#ifdef USE_SSD1306  
-   tft.setTextSize(1);
-   tft.setTextColor(SSD1306_WHITE);        // Draw white text
-#define DISPLAY_WHITE SSD1306_WHITE
-#define DISPLAY_BLACK SSD1306_BLACK
-#define DISPLAY_GRAY SSD1306_WHITE
-#define DISPLAY_YELLOW SSD1306_WHITE
-#define DISPLAY_INVERSE SSD1306_INVERSE
-#endif
-#ifdef USE_ILI9341
-  tft.setTextColor(ILI9341_WHITE); 
-#define DISPLAY_WHITE ILI9341_WHITE
-#define DISPLAY_BLACK ILI9341_BLACK
-#define DISPLAY_GRAY ILI9341_WHITE
-#define DISPLAY_YELLOW ILI9341_YELLOW
-#define DISPLAY_INVERSE  ILI9341_WHITE
-#define SCREEN_WIDTH  tft.width()
-#endif
-}
-
-void sendDisplay()
-{
-#ifdef USE_SSD1306  
-   tft.display();
-#endif
-#ifdef USE_ILI9341
-    yield();
-#endif
-}
-
-//---------------- Drawing ------------------
-
-#ifdef USE_ILI9341
-
-const int dX = 30 ;
-const int dY = 24 ;
-const int oX = 20 ;
-const int oY = 24 ;
-const int DOTS = 10 * dX - 2 ;  // FOR ADAFRUIT RA8875
-
- 
-void DrawCheckerBoard() 
-{
-  // VERTICAL
-  for (int y=0; y<9; y++)
-  {
-    // HORIZONTAL
-    for (int x=0; x<10; x++)
-    {
-      tft.drawRect(oX + x*dX, y*dY+oY, dX, dY, ILI9341_DARKGREY);
-      tft.fillRect(oX + x*dX+1, y*dY+1+oY, dX-2, dY-2, DISPLAY_BLACK);
-    }
-    tft.drawRect(oX, oY, 10 * dX, 9 * dY, ILI9341_DARKGREY);  
-  }
-  tft.drawRect(oX, oY, 10 * dX, 9 * dY, ILI9341_DARKGREY);  
-}
- 
- 
-void DrawRectangleMenue() 
-{
-  // VERTICAL
-  for (int y=0; y<9; y++)
-  {
-    // HORIZONTAL
-    for (int x=0; x<10; x++)
-    {
-      tft.drawRect(oX, oY, 10 * dX, 9 * dY, DISPLAY_WHITE);
-      tft.fillRect(oX+1, oY+1, 10 * dX - 2, 9 * dY - 2, DISPLAY_BLACK);
-    }
-  }  
-}
- 
-/* 
-void ShowVerticalScale() 
-{
-  // CLEAR TEXTAREA
-  tft.fillRect(0, 0, oX-2, 420, DISPLAY_BLACK);
-  // NOW WRITE NEW VALUES
-//  tft.textMode();
-  tft.textEnlarge(0);
-  char string[6]; 
-  int level ;
-  int Top ;
-  if (AttSet == 0) Top = (int)( ThruLoss + MaxIFLevel );
-  if (AttSet == 1) Top = (int)( ThruLoss + MaxIFLevel + AttLoss );
- 
-  for (int y=0; y<=9; y++)
-  {
-      tft.textSetCursor(0, y * dY);
-      tft.textTransparent(DISPLAY_WHITE);
-      level = Top - y * 10 ;
-      itoa(level,string,10);
-      if (level == 0)
-      {
-      for (int z=6; z>0; z--) string[z] = string[z-1] ; 
-      string[0] = 32 ; // space
-      }
-      if (level >= 0)
-      {
-      for (int z=6; z>0; z--) string[z] = string[z-1] ; 
-      }
-      if (level > 0) string[0] = 43 ; // plus
-      if (abs(level) < 100)
-      {
-      for (int z=6; z>0; z--) string[z] = string[z-1] ;
-      string[0] = 32 ; // space 
-      }
-        
-      tft.textWrite(string);
-  }  
-}
-
- 
-void DrawLine() 
-{
-  long Y1, Y2 ;
-  if (AttSet == 0) TopLevel = MaxIFLevel + ThruLoss  ;
-  if (AttSet == 1) TopLevel = MaxIFLevel + AttLoss + ThruLoss ;
-  // HORIZONTAL
-  for (int x=0; x < DOTS-2 ; x+=1)
-  {
-  if (Sample[x] >= TopLevel) Sample[x] = TopLevel - 0.5 ;
-  if (Sample[x+1] >= TopLevel) Sample[x+1] = TopLevel - 0.5 ;
-  if (Sample[x] <= (TopLevel - 90.0)) Sample[x] = TopLevel - 89.5 ;
-  if (Sample[x+1] <= (TopLevel - 90.0)) Sample[x+1] = TopLevel - 89.5 ;
-  Y1 = (int)(dY * abs((TopLevel - Sample[x])   * 0.1 ));
-  Y2 = (int)(dY * abs((TopLevel - Sample[x+1]) * 0.1 ));
-  tft.drawLine(x+oX+2, Y1+oY, x+oX+3, Y2+oY, DISPLAY_YELLOW);
-  tft.drawLine(x+oX+2, Y1+oY+1, x+oX+3, Y2+oY+1, DISPLAY_YELLOW);
-  }
-}
- 
-*/ 
-
-#endif
 
 // -------------------- Rotary -------------------------------------------
 #ifdef USE_ROTARY
 
 
 // Encode input pins, these should be interrupt enabled inputs
+// DB2OO, 18.1.20: On Non SAMD, e.g. Nano, use D2 D3
+#if defined(ARDUINO_ARCH_SAMD)
 int R_pinEncA=7;
 int R_pinEncB=6;
+#else
+int R_pinEncA=3;
+int R_pinEncB=2;
+#endif
  
 volatile int R_counter = 0; 
 static int R_counter_oud = 0;        
@@ -366,44 +252,67 @@ void R_pinAction() {
 
 ///-------------------------------------------------------- SI4432 start ----------------------------------------------
 
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
 // PINS SI4432, you can change these to any pin you want
-
+// DB2OO, 18.1.20: On Non SAMD, e.g. Nano, use other pins
+#if defined(ARDUINO_ARCH_SAMD)
 const int SI_nSEL[4] = { 0,5, 11, 12 }; // #4 is dummy!!!!!!
 const int SI_SCLK = 1 ;
 const int SI_SDI = 2 ;
 const int SI_SDO = 3 ;
-
-// Use this to tune the xtal oscilators on the SI4432 modules to the exact frquency
-#define V0_XTAL_CAPACITANCE 0x64
-#define V1_XTAL_CAPACITANCE 0x64
-
+#else
+// DB2OO, 9.1.20: nSEL for TX=D8, RX=D7
+const int SI_nSEL[4] = { 7,8, 11, 12 };
+//const int SI_SCLK = 1 ;
+// DB2OO, 9.1.20: SCLK D6
+const int SI_SCLK = 6 ;
+#ifdef ESP8266
+const int SI_SDI = SD1 ;
+const int SI_SDO = SD2 ;
+#else
+const int SI_SDI = 9 ;
+const int SI_SDO = 10 ;
+#endif // ESP8266
+#endif
 
 byte SI4432REG[129] ;
-float bandwidth = 34.6 ;
+#endif //USE_SI4432
 
 // currently selectd SI4432
 int SI4432_Sel = 0;
 
+float bandwidth = 34.6 ;
+
 void SI4432_Write_Byte(byte ADR, byte DATA )
 {
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
+
   ADR |= 0x80 ; // RW = 1
   digitalWrite(SI_SCLK, LOW);
   digitalWrite(SI_nSEL[SI4432_Sel], LOW);
   shiftOut(SI_SDI , SI_SCLK , MSBFIRST , ADR );
   shiftOut(SI_SDI , SI_SCLK , MSBFIRST , DATA );
   digitalWrite(SI_nSEL[SI4432_Sel], HIGH);
+#endif //
 }
 
 byte SI4432_Read_Byte( byte ADR )
 {
-  byte DATA ;
+  //DB2OO, 18.1.20
+#ifdef USE_SI4432
+
+byte DATA ;
   digitalWrite(SI_SCLK, LOW);
   digitalWrite(SI_nSEL[SI4432_Sel], LOW);
   shiftOut(SI_SDI , SI_SCLK , MSBFIRST , ADR );
   DATA = shiftIn(SI_SDO , SI_SCLK , MSBFIRST );
   digitalWrite(SI_nSEL[SI4432_Sel], HIGH);
   return DATA ;
+#endif //USE_SI4432
 }
+
 
 void SI4432_Reset()
 {
@@ -411,12 +320,19 @@ void SI4432_Reset()
   // always perform a system reset (don't send 0x87) 
   SI4432_Write_Byte( 0x07, 0x80);
   delay(10);
+  //DB2OO, 18.1.20
+#if defined(ARDUINO_ARCH_SAMD)
   // wait for chiprdy bit
   while (count++ < 100 && ( SI4432_Read_Byte ( 0x04 ) & 0x02 ) == 0) { 
     delay(10);
     Serial.print("Waiting for SI4432 ");
     Serial.println(SI4432_Sel);
   }
+#else
+  //DB2OO, 18.1.20: This code worked in HyperVFO_SI_New
+  // wait for chiprdy bit
+  while (( SI4432_Read_Byte ( 0x04 ) & 0x02 ) == 0) { delay(1); }
+#endif  
 }
 
 #if 0
@@ -455,6 +371,9 @@ procedure SI4432_Set_BW_FSK ( dword in BW_Hz ) is
 #else
 float SI4432_SET_RBW(float WISH)
 {
+  //DB2OO, 18.1.20
+#ifdef USE_SI4432
+
   byte ndec = 5 ;
   byte dwn3 = 0 ;
   byte fils = 1 ;
@@ -675,6 +594,7 @@ float SI4432_SET_RBW(float WISH)
     fils = 7 ;
     REAL = 137.9 ;
   }
+  if (WISH > 137.9) dwn3 = 1 ;
   if (WISH > 137.9) {
     ndec = 1 ;
     fils = 4 ;
@@ -754,25 +674,21 @@ float SI4432_SET_RBW(float WISH)
     REAL = 620.7 ;
   }
 
-  if (WISH > 137.9) dwn3 = 1 ;
-
   byte BW = (dwn3 << 7) | (ndec << 4) | fils ;
 
   SI4432_Write_Byte(0x1C , BW ) ;
-
-  rxosr = 500.0 * ( 1.0 + 2.0 * dwn3 ) / ( pow(2.0, (ndec-3.0)) * REAL );
-
-  byte integer = (int)rxosr ;
-  byte fractio = (int)((rxosr - integer) * 8 ) ;
-  byte memory = (integer << 3) | (0x07 & fractio) ;
-
-  SI4432_Write_Byte(0x20 , memory ) ;
   return REAL ;
+#else
+  return(WISH);
+#endif // #ifdef USE_SI4432
 }
 
 #endif
 
 void SI4432_Set_Frequency ( long Freq ) {
+
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
   int hbsel;
   long Carrier;
   if (Freq >= 480000000) {
@@ -789,11 +705,19 @@ void SI4432_Set_Frequency ( long Freq ) {
   SI4432_Write_Byte ( 0x76, (Carrier>>8) & 0xFF );
   SI4432_Write_Byte ( 0x77, Carrier & 0xFF  );
   delay(2);
+#endif // #ifdef USE_SI4432
+
 }  
 
 int SI4432_RSSI()
 {
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
   int RSSI_RAW;
+  
+// DB2OO, 18.1.20: always read from SI4432 0
+//   SI4432_Sel = 0;
+
   // SEE DATASHEET PAGE 61
 #ifdef USE_SI4463
   if (SI4432_Sel == 2) {
@@ -804,11 +728,24 @@ int SI4432_RSSI()
 //  float dBm = 0.5 * RSSI_RAW - 120.0 ;
   // Serial.println(dBm,2);
   return RSSI_RAW ;
+#else
+  //DB2OO, 18.1.20: simulated level will go up and down
+  static int RSSI_RAW=60, dir=1;
+  RSSI_RAW += dir;
+  if (RSSI_RAW >230 || RSSI_RAW<10) {
+    dir = -dir;
+    RSSI_RAW += 2*dir;
+  }
+  return(RSSI_RAW);
+#endif
 }
 
 
 void SI4432_Sub_Init()
 {
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
+
   SI4432_Reset();
 
 #if 0
@@ -888,10 +825,15 @@ void SI4432_Sub_Init()
 // GPIO automatic antenna switching
   SI4432_Write_Byte(0x0B, 0x12) ;
   SI4432_Write_Byte(0x0C, 0x15) ;
+#endif // #ifdef USE_SI4432
+
 }
 
 void SI4432_Init()
 {
+//DB2OO, 18.1.20
+#ifdef USE_SI4432
+
   pinMode(SI_nSEL[0], OUTPUT);
   pinMode(SI_nSEL[1], OUTPUT);
   pinMode(SI_SCLK, OUTPUT);
@@ -905,34 +847,44 @@ void SI4432_Init()
   digitalWrite(SI_nSEL[1], HIGH);
 
   SI4432_Reset();
-//DebugLine("IO set");
+  DebugLine("IO set");
   SI4432_Sel = 0;
   SI4432_Sub_Init();
+  // DB2OO, 18.1.20 added
+  DebugLine("0 init done");
 
   SI4432_Sel = 1;
   SI4432_Sub_Init();
-//DebugLine("1 init done");
+  DebugLine("1 init done");
 
 
   SI4432_Sel = 0;
   SI4432_Write_Byte(0x07, 0x07);// Enable receiver chain
-  SI4432_Write_Byte(0x09, V0_XTAL_CAPACITANCE);// Tune the crystal
   SI4432_Set_Frequency(433920000);
+  //DB2OO, 18.1.20
+#if 1 //DB2OO, 25.1.20 #ifdef GPIO2_OUTPUT
   SI4432_Write_Byte(0x0D, 0x1F) ; // Set GPIO2 output to ground
-
+#endif
 
   SI4432_Sel = 1;
   SI4432_Write_Byte(0x7, 0x0B); // start TX
-  SI4432_Write_Byte(0x09, V1_XTAL_CAPACITANCE);// Tune the crystal
   SI4432_Set_Frequency(443920000);
   SI4432_Write_Byte(0x6D, 0x1F);//Set full power
-  
+  //DB2OO, 18.1.20
+#if 1 //DB2OO, 25.1.20 #ifdef GPIO2_OUTPUT
+  SI4432_Write_Byte(0x0D, 0x1F) ; // Set GPIO2 output to ground
+#endif
+#ifdef GPIO2_OUTPUT  
   SI4432_Write_Byte(0x0D, 0xC0) ; // Set GPIO2 maximumdrive and clock output
   SI4432_Write_Byte(0x0A, 0x02) ; // Set 10MHz output
+#endif
+#endif //#ifdef USE_SI4432
 }
 
 void SetPowerReference(int freq)
 {
+  //DB2OO, 18.1.20
+#ifdef GPIO2_OUTPUT  
   SI4432_Sel = 1;         //Select Lo module
   if (freq < 0 || freq > 7 ) {
     SI4432_Write_Byte(0x0D, 0x1F) ; // Set GPIO2 to GND
@@ -940,6 +892,7 @@ void SetPowerReference(int freq)
     SI4432_Write_Byte(0x0D, 0xC0) ; // Set GPIO2 maximumdrive and clock output
     SI4432_Write_Byte(0x0A, freq & 0x07) ; // Set GPIO2 frequency
   }
+#endif
 }
 
 //------------PE4302 -----------------------------------------------
@@ -957,16 +910,22 @@ void SetPowerReference(int freq)
 #endif
 
 void PE4302_init() {
+//DB2OO, 18.1.20
+#ifdef USE_ATTENUATOR
 #ifdef PE4302_serial
   pinMode(PE4302_en, OUTPUT);
   digitalWrite(PE4302_en, LOW);
 #else
   for (int i=0; i<6; i++) pinMode(i+PE4302_pinbase, OUTPUT);          // Setup attenuator at D6 - D11
 #endif
+#endif // USE_ATTENUATOR
 }
 
 void PE4302_Write_Byte(byte DATA )
 {
+//DB2OO, 18.1.20
+#ifdef USE_ATTENUATOR
+  
 #ifdef PE4302_serial
 //Serial mode output  
   digitalWrite(SI_SCLK, LOW);
@@ -979,13 +938,52 @@ void PE4302_Write_Byte(byte DATA )
     digitalWrite(i+PE4302_pinbase, p & (1<<i));
   }
 #endif
+#endif // USE_ATTENUATOR
 }
 
 
-// ----------------------- rotary -----------------------------------
+//------------------------------------------ Display ------------------------------------
+#ifdef USE_DISPLAY
+#include <Adafruit_GFX.h>
+//DB2OO, 18.1.20
+#if defined(ESP8266) && 0
+#include <SSD1306.h>
+#else
+#include <Adafruit_SSD1306.h>
+#endif
 
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#if defined(ESP8266) && 0
+SSD1306Wire  display(0x3c, D1, D2);
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#else
+#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+#endif // ESP8266
+
+#endif
+
+// ----------------------- rotary -----------------------------------
+//DB2OO, 18.1.20
+#if defined(USE_ROTARY)
+#if defined(ARDUINO_ARCH_SAMD) 
 const int buttonPin = 8;    // the number of the pushbutton pin
 const int backButtonPin = 9;
+#else
+#ifdef ESP8266
+const int buttonPin = D0;    // the number of the pushbutton pin
+const int backButtonPin = SD3;
+#else
+//DB2OO, 18.1.20: NANO
+const int buttonPin = 11;    // the number of the pushbutton pin
+const int backButtonPin = 12;
+#endif // ESP8266
+#endif
+#endif //USE_ROTARY
+
 enum buttont_event {shortClickRelease=1, longClick=2, longClickRelease=3, shortBackClickRelease=4, longBackClick=5, longBackClickRelease=6, buttonRotateUp=7, buttonRotateDown=8 };
 enum button_state {buttonUp, buttonDown, buttonLongDown};
 int buttonState = buttonUp;             // the current reading from the input pin
@@ -1038,12 +1036,12 @@ void showFreq(unsigned long f)
   t[i++] = 0;
 //  Serial.println(t);
 #ifdef USE_DISPLAY
-  tft.fillRect(0, 0, tft.width(), oY-2, DISPLAY_BLACK);
-//  clearDisplay();
-  textWhite();        // Draw white text
-  tft.setCursor(0, 1);
-  tft.print(t);
-  sendDisplay();
+  display.clearDisplay();
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.setCursor(0, 1);
+  display.print(t);
+  display.display();
 #endif
 }
 
@@ -1237,29 +1235,29 @@ update:
   t = ( __FlashStringHelper *) &(menu[currentMenu].itemText[0]);
 
   if (stateChange || dirty) {
-  tft.fillRect(0, 0, tft.width(), oY-2, DISPLAY_BLACK);
-//    clearDisplay();
-    textWhite();        // Draw white text
-    tft.setCursor(0, 0);
+    display.clearDisplay();
+    display.setTextSize(1);             // Normal 1:1 pixel scale
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+    display.setCursor(0, 0);
     if (!menuActive) {
-      tft.print(ut);
-      tft.print(':');
-      tft.print(t);   // Show menu text
+      display.print(ut);
+      display.print(':');
+      display.print(t);   // Show menu text
     } else {
-      tft.print(t);
-      tft.print(':');
-      //      tft.setCursor(8, 0);
+      display.print(t);
+      display.print(':');
+      //      display.setCursor(8, 0);
       if (kind == menuToggle) {
         strcpy_P(buffer, (char*)pgm_read_word(&(toggleText[(v[dataIndex]) + mi]))); // Toggle text
-        tft.print(buffer);
+        display.print(buffer);
       } else if (kind == menuValue) {
-        tft.print(v[dataIndex]);    // Value
+        display.print(v[dataIndex]);    // Value
       } else if (kind == menuAction) {
-        //      tft.print((const __FlashStringHelper*)&(v[5])); // Nothing to show
+        //      display.print((const __FlashStringHelper*)&(v[5])); // Nothing to show
       }
       // else do not show anything
     }
-    sendDisplay();
+    display.display();
     stateChange = false;
     dirty = false;
 //    if (buttonEvent == 0)
@@ -1333,22 +1331,21 @@ update:
 //------------------------------------------
 
 
-int debug = 0;
-
-
-#define DebugLine(X) { if (debug) Serial.println(X); }
-#define Debug(X) { if (debug) Serial.print(X); }
-
 
 int inData = 0;
-long steps = DISPLAY_POINTS;
+long steps = 100;
 unsigned long  startFreq = 250000000;
 unsigned long  stopFreq = 300000000;
 unsigned long  lastFreq[6] = { 300000000, 300000000,0,0,0,0};
 int lastParameter[10];
 int parameter;
 int VFO = 0;
+//DB2OO, 18.1.20: Init. for SI4432 RX module is for #0, but RX is defined as 2 !??
+#if defined(ARDUINO_ARCH_SAMD)
 int RX = 2;
+#else
+int RX = 0;
+#endif
 int extraVFO=-1;
 int extraVFO2 = -1;
 unsigned long reg = 0;
@@ -1365,23 +1362,16 @@ int hardware = 0;
 
 
 // A Arduino zero benefits from a large serial buffer, for a nano you can reduce the buffer size such as 64
-#define BUFFERSIZE 256
-uint8_t serialBuff[BUFFERSIZE];
-volatile int     serialIndex=0;
-//#define HIGHPOINT (BUFFERSIZE - 20)
-#define HIGHPOINT (0)
+// DB2OO, 18.1.20: On Non SAMD, e.g. Nano, only 32 bytes buffer
+#if defined(ARDUINO_ARCH_SAMD)
+#define BUFFERSIZE 512
+#else
+#define BUFFERSIZE 32
+#endif
 
-void serialFlushIf(int amount)
-{
-  if (serialIndex > amount)
-  {
-    pinMode(tinySA_led, OUTPUT); // Flash led if serial data is being send
-    digitalWrite(tinySA_led, HIGH);
-    Serial.write(serialBuff, serialIndex);
-    digitalWrite(tinySA_led, LOW);
-    serialIndex = 0;
-  }
-}
+uint8_t serialBuff[BUFFERSIZE];
+int     serialIndex=0;
+
 
 
 
@@ -1428,69 +1418,64 @@ void info()
 //  Serial.println("R = Reset");
 }
 
+//DB2OO, 18.1.20: Define myData only if display or encoder is used. Moved this #ifdef several lines ahead
+#if defined(USE_DISPLAY) || defined(USE_ROTARY)
 
-unsigned char myData[DISPLAY_POINTS+1]; 
+//DB2OO, 18.1.20
+#warning "myData defined"
+
+unsigned char myData[128]; 
 int peakLevel;
 double peakFreq;
 
 #define BARSTART  24
-
-#ifdef USE_DISPLAY
+#endif
+//DB2OO, 18.1.20
+#if defined(USE_DISPLAY)
 
 void displayHisto ()
 {
-//  clearDisplay();
-  DrawCheckerBoard();
+  display.clearDisplay();
+
 //int settingMax = 0;
 //int settingMin = -120;
   int delta=settingMax - settingMin;
 
-  // Display levels
-  tft.fillRect(0, 0, oX-2, tft.height(), DISPLAY_BLACK);
-  textWhite();
-  tft.setCursor(0,oY);             // Start at top-left corner
-  tft.println(settingMax);
-  tft.setCursor(0,tft.height() - 8);
-  tft.println(settingMin);
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.setCursor(0,0);             // Start at top-left corner
+  display.println(settingMax);
+  display.setCursor(0,56);
+  display.println(settingMin);
+  
+  for (int i=0; i<=6; i++)
+    display.drawPixel(BARSTART - 2, i*10, SSD1306_WHITE);
 
-  // Dsiplay frequencies
-  tft.fillRect(0, 0, tft.width(), oY-2, DISPLAY_BLACK);
-  tft.setTextColor(DISPLAY_INVERSE);        // Draw white text
-  tft.setCursor(oX+2,0);             // Start at top-left corner
-  double f = (((double)(startFreq - lastFreq[0]))/ 1000000.0);
-  tft.println(f);
-  tft.setCursor(tft.width() - 36,0);
-  f = (((double)(stopFreq - lastFreq[0]))/ 1000000.0);
-  tft.println(f);
-
-  if (peakLevel > -150) {
-    tft.setCursor(0,tft.height()/2);             // Start at top-left corner
-    tft.println((int)((peakLevel/ 2.0  - settingAttenuate) - 120.0)+settingLevelCal);
-    tft.setCursor(oX+2,8);
-    tft.println(peakFreq/ 1000000.0);
-  }
-
-    
-#define Y_GRIDS 9
-  for (int i=0; i<DISPLAY_POINTS - 1; i++) {
+  for (int i=0; i<100; i++) {
     double f = ((myData[i] / 2.0  - settingAttenuate) - 120.0);
-    f = (f - settingMin) * Y_GRIDS * dY / delta;
-    if (f >= Y_GRIDS * dY) f = Y_GRIDS * dY-1;
-    if (f < 0) f = 0;
-    double f2 = ((myData[i+1] / 2.0  - settingAttenuate) - 120.0);
-    f2 = (f2 - settingMin) * Y_GRIDS * dY / delta;
-    if (f2 >= Y_GRIDS * dY) f2 = Y_GRIDS * dY-1;
-    if (f2 < 0) f2 = 0;
-  int x = i;
-  int Y1 = Y_GRIDS * dY - 1 - (int)f;
-  int Y2 = Y_GRIDS * dY - 1 - (int)f2;
-  tft.drawLine(x+oX, oY+Y1, x+oX+1, oY+Y2, DISPLAY_YELLOW);
-  tft.drawLine(x+oX, oY+Y1+1, x+oX+1, oY+Y2+1, DISPLAY_YELLOW);
+    f = (f - settingMin) * display.height() / delta;
+    if (f > 64) f = 63.0;
+    display.drawLine(i+BARSTART, display.height() -1 - (int)f, i+BARSTART, display.height()-1, SSD1306_WHITE);
   }
  
+  display.setTextColor(SSD1306_INVERSE);        // Draw white text
+  display.setCursor(BARSTART+2,0);             // Start at top-left corner
+  double f = (((double)(startFreq - lastFreq[0]))/ 1000000.0);
+  display.println(f);
+  display.setCursor(SCREEN_WIDTH- BARSTART - 12,0);
+  f = (((double)(stopFreq - lastFreq[0]))/ 1000000.0);
+  display.println(f);
 
+  for (int i=0; i<12; i++)
+    display.drawPixel(BARSTART + i*10, 63, SSD1306_INVERSE);
 
-  sendDisplay();
+  if (peakLevel > -150) {
+    display.setCursor(0,28);             // Start at top-left corner
+    display.println((int)((peakLevel/ 2.0  - settingAttenuate) - 120.0)+settingLevelCal);
+    display.setCursor(BARSTART+2,8);
+    display.println(peakFreq/ 1000000.0);
+  }
+  display.display();
 }
 #endif
 
@@ -1502,33 +1487,29 @@ void setup()
 //  while(!SerialUSB); // Uncomment this line if you want the Arduino to wait with starting till the serial monitor is activated, usefull when debugging
 #endif
 //return;
-#if defined(ARDUINO_ARCH_SAMD) 
-  Wire.setClock(800000);
+  //DB2OO, 18.1.20
+#ifdef ESP8266
+  Wire.begin(D1,D2);
 #endif
-
-//SPISettings(12000000, MSBFIRST, SPI_MODE0)
-//SPI.beginTransaction();
+  //DB2OO, 18.1.20: Always use Wire 800k
+//#if defined(ARDUINO_ARCH_SAMD) 
+  Wire.setClock(800000);
+// #endif
   
-  Serial.println("Starting");
+  DebugLine("Starting");
   SI4432_Init();
-  Serial.println("Init done");
+  DebugLine("Init done");
 
   info();
 
-#ifdef USE_SSD1306
-  if(!tft.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+#ifdef USE_DISPLAY
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     Serial.println(F("SSD1306 allocation failed"));
-
   }
-#endif
-#ifdef USE_ILI9341
-  tft.begin();
-  tft.setRotation(1);
-
 #endif
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
-//  sendDisplay();
+//  display.display();
 //  displayHisto();
 #ifdef USE_ROTARY
   R_setup();
@@ -1574,6 +1555,18 @@ void setFreq(int V, unsigned long freq)
     else
 #endif
       SI4432_Set_Frequency(freq);
+  }
+}
+
+void serialFlushIf(int amount)
+{
+  if (serialIndex > amount)
+  {
+    pinMode(tinySA_led, OUTPUT); // Flash led if serial data is being send
+    digitalWrite(tinySA_led, HIGH);
+    Serial.write(serialBuff, serialIndex);
+    digitalWrite(tinySA_led, LOW);
+    serialIndex = 0;
   }
 }
 
@@ -1697,7 +1690,7 @@ void loop()
 //    Serial.println(autoSweepStep);
     if (autoSweepStep == 0) {
       autoSweepFreq = lFreq[0];
-      autoSweepFreqStep = (lFreq[1] - lFreq[0])/DISPLAY_POINTS;
+      autoSweepFreqStep = (lFreq[1] - lFreq[0])/100;
       setFreq (0, lFreq[2]);
       lastFreq[0] = lFreq[2];
       startFreq = lFreq[0] + lFreq[2];
@@ -1705,7 +1698,7 @@ void loop()
       int p = - settingAttenuate * 2;
       PE4302_Write_Byte(p);
       SetPowerReference(settingPowerCal);
-      settingBandwidth = ((float)(lFreq[1] - lFreq[0]))/DISPLAY_POINTS/1000.0;
+      settingBandwidth = (lFreq[1] - lFreq[0])/100.0/1000.0;
       SI4432_Sel = 0;
       SI4432_SET_RBW(settingBandwidth);
       SI4432_Sel = 1;
@@ -1746,8 +1739,8 @@ void loop()
         SI4432_Init();
     }
     autoSweepStep++;
-    autoSweepFreq += (lFreq[1] - lFreq[0])/DISPLAY_POINTS;
-    if (autoSweepStep >= DISPLAY_POINTS) {
+    autoSweepFreq += (lFreq[1] - lFreq[0])/100;
+    if (autoSweepStep >= 100) {
       autoSweepStep = 0;
 #if USE_DISPLAY
       displayHisto();
@@ -1778,11 +1771,14 @@ void loop()
     if(inData == 'L' || inData == 'l') 
       isLogSweep = true;
     inData = 0;
+    //DB2OO, 18.1.20: In Erik's code RX is used and RX is set to 2, but initialization for SI4432 RX-module is for 0 !?
     SI4432_Sel=RX;
+#if 1 //DB2OO, 25.1.20
     if (SI4432_RSSI() == 0) {
-//        Serial.println("Init done");
+        DebugLine("Init done");
         SI4432_Init();
     }
+#endif
 
     delay(10);
     freq = startFreq;
@@ -1791,7 +1787,7 @@ void loop()
     for(int i = 0; i < steps; i++ )
     {
       unsigned long modfreq = freq;
-      serialFlushIf(HIGHPOINT);
+      serialFlushIf(BUFFERSIZE - 10);
       old_micros = micros();
       if (extraVFO>=0) {
         setFreq(extraVFO,modfreq-offset);
@@ -1807,12 +1803,12 @@ void loop()
         serialBuff[serialIndex++] = 'x'; 
         serialBuff[serialIndex++] = ((byte) (sensor));
         serialBuff[serialIndex++] = ((byte) (sensor>>8));
-    serialFlushIf(0); ///TEMP -----------------------------------------------
 
+#ifdef USE_DISPLAY//DB2OO, 18.1.20
         if (i < 128){
           myData[i] = sensor;
         }
-      
+#endif      
       }
 #if 1
       while (micros() - old_micros < (delaytime * 100L)*2/3 ) {
@@ -2030,13 +2026,19 @@ void loop()
   }
   if(inData == 'W' || inData == 'w')
   {
+// DB2OO, 18.1.20: On the NANO the W-command did not recognize the nadwidth
+#if !defined(ARDUINO_ARCH_SAMD)
+    delay(1);  // allow to receive more characters
+#endif
     if(Serial.available()) {
       bandwidth = Serial.parseFloat();
-      settingBandwidth = (int)bandwidth;
-      Serial.print("Width: ");
-      Serial.println(spacing);
     } else 
       bandwidth = 300.0;
+    // DB2OO, 18.1.20: if the character is just a CR or LF bandwidth will be 0
+      if (bandwidth==0.0) bandwidth=300.0;
+      settingBandwidth = (int)bandwidth;
+      Debug("Width: ");
+      DebugLine(bandwidth);
     SI4432_Sel = RX;
     SI4432_SET_RBW(bandwidth);
     inData = 0;
